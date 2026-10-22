@@ -99,7 +99,8 @@ smbus_result_t smbus_write_read(uint8_t addr, const uint8_t *target, size_t targ
     int rc = i2c_write_timeout_us(SMBUS_I2C, addr, target, target_len, true, to_us(timeout_ms));
     smbus_result_t res = map_write(rc, target_len);
     if (res != SMBUS_OK) {
-        // После неудачной записи с nostop контроллер сам выдаёт STOP при abort
+        // При abort контроллер сам выдаёт STOP, но SDK оставляет флаг повторного START
+        SMBUS_I2C->restart_on_next = false;
         return res;
     }
     rc = i2c_read_timeout_us(SMBUS_I2C, addr, data, len, false, to_us(timeout_ms));

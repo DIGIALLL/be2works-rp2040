@@ -5,3 +5,4 @@ build/
 *.hex
 *.map
 *.dis
+tests/test_cp2112

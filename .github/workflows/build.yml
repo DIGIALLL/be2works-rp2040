@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Protocol tests
+        run: make -C tests run
+
       - name: Install toolchain
         run: |
           sudo apt-get update

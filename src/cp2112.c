@@ -90,6 +90,12 @@ static char ascii_serial[31];
 static bool     reset_requested;
 static uint32_t reset_at_ms;
 
+// Запросы статуса и выдачи данных обрабатываются после выполнения транзакции:
+// TinyUSB может отдать их в одном tud_task() вместе с самим запросом на чтение
+static bool     status_requested;
+static bool     force_read_requested;
+static uint16_t force_read_len;
+
 // ---------------------------------------------------------------------------
 // Вспомогательные функции
 
@@ -437,19 +443,16 @@ void cp2112_on_output(uint8_t id, const uint8_t *buf, uint16_t len) {
     }
     case RPT_READ_FORCE_SEND:
         if (len < LEN_READ_FORCE_SEND) break;
-        push_rx_data(get_be16(buf));
+        force_read_len = get_be16(buf);
+        force_read_requested = true;
         break;
-    case RPT_XFER_STATUS_REQUEST: {
-        uint8_t r[LEN_XFER_STATUS_RESP];
-        r[0] = xfer.status0;
-        r[1] = xfer.status1;
-        put_be16(r + 2, xfer.retries);
-        put_be16(r + 4, xfer.bytes_read);
-        queue_in(RPT_XFER_STATUS_RESPONSE, r, sizeof(r), LEN_XFER_STATUS_RESP);
+    case RPT_XFER_STATUS_REQUEST:
+        status_requested = true;
         break;
-    }
     case RPT_CANCEL_TRANSFER:
         pending.type = CMD_NONE;
+        status_requested = false;
+        force_read_requested = false;
         rx_len = rx_sent = 0;
         xfer.status0 = STATUS0_IDLE;
         xfer.status1 = 0;
@@ -467,8 +470,26 @@ void cp2112_init(void) {
     smbus_init(cfg.clock_hz);
 }
 
+static void send_status(void) {
+    uint8_t r[LEN_XFER_STATUS_RESP];
+    r[0] = xfer.status0;
+    r[1] = xfer.status1;
+    put_be16(r + 2, xfer.retries);
+    put_be16(r + 4, xfer.bytes_read);
+    queue_in(RPT_XFER_STATUS_RESPONSE, r, sizeof(r), LEN_XFER_STATUS_RESP);
+}
+
 void cp2112_task(void) {
     run_pending();
+
+    if (status_requested) {
+        status_requested = false;
+        send_status();
+    }
+    if (force_read_requested) {
+        force_read_requested = false;
+        push_rx_data(force_read_len);
+    }
 
     if (in_count && tud_hid_ready()) {
         uint8_t *slot = in_queue[in_head];
