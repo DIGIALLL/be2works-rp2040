@@ -62,7 +62,6 @@ static const uint8_t desc_hid_report[] = {
     RPT(RPT_MANUFACTURER_STRING,  LEN_STRING,           FEATURE),
     RPT(RPT_PRODUCT_STRING,       LEN_STRING,           FEATURE),
     RPT(RPT_SERIAL_STRING,        LEN_STRING,           FEATURE),
-    RPT(RPT_DEBUG_LOG,            LEN_DEBUG_LOG,        FEATURE),
 
     0xC0                // End Collection
 };

@@ -92,12 +92,14 @@ static bool     reset_requested;
 static bool     bootloader_requested;
 static uint32_t reset_at_ms;
 
-// Журнал обмена: FIFO записей по 8 байт [kind, id, len, data[5]], забирается репортом 0x30
+// Журнал обмена: FIFO записей по 8 байт [kind, id, len, data[5]], в режиме журнала
+// забирается репортом серийного номера
 #define LOG_SIZE        256
 #define LOG_PER_REPORT  7
 static uint8_t  log_fifo[LOG_SIZE][8];
 static uint16_t log_head, log_count;
 static uint8_t  log_dropped;
+static bool     log_mode;
 
 // Запросы статуса и выдачи данных обрабатываются после выполнения транзакции:
 // TinyUSB может отдать их в одном tud_task() вместе с самим запросом на чтение
@@ -216,7 +218,7 @@ static void set_defaults(void) {
 }
 
 void cp2112_log(char kind, uint8_t id, const uint8_t *data, uint16_t len) {
-    if (id == RPT_DEBUG_LOG) return;
+    if (log_mode && id == RPT_SERIAL_STRING) return;
     if (log_count == LOG_SIZE) {
         if (log_dropped < 0xFF) log_dropped++;
         return;
@@ -241,7 +243,7 @@ static uint16_t pop_log(uint8_t *dst) {
         log_head = (log_head + 1) % LOG_SIZE;
         log_count--;
     }
-    return LEN_DEBUG_LOG;
+    return LEN_STRING;
 }
 
 // ---------------------------------------------------------------------------
@@ -362,12 +364,13 @@ uint16_t cp2112_get_feature(uint8_t id, uint8_t *buf, uint16_t maxlen) {
         len = LEN_STRING;
         break;
     case RPT_SERIAL_STRING:
-        memcpy(tmp, str_serial, LEN_STRING);
-        len = LEN_STRING;
-        break;
-    case RPT_DEBUG_LOG:
-        memset(tmp, 0, LEN_DEBUG_LOG);
-        len = pop_log(tmp);
+        if (log_mode) {
+            memset(tmp, 0, LEN_STRING);
+            len = pop_log(tmp);
+        } else {
+            memcpy(tmp, str_serial, LEN_STRING);
+            len = LEN_STRING;
+        }
         break;
     default:
         cp2112_log('G', id, NULL, 0);
@@ -384,7 +387,9 @@ void cp2112_set_feature(uint8_t id, const uint8_t *buf, uint16_t len) {
     cp2112_log('S', id, buf, len);
     switch (id) {
     case RPT_RESET:
-        if (len >= 1 && (buf[0] == 0x01 || buf[0] == RESET_TO_BOOTLOADER)) {
+        if (len >= 1 && buf[0] == RESET_LOG_MODE) {
+            log_mode = !log_mode;
+        } else if (len >= 1 && (buf[0] == 0x01 || buf[0] == RESET_TO_BOOTLOADER)) {
             reset_requested = true;
             bootloader_requested = buf[0] == RESET_TO_BOOTLOADER;
             reset_at_ms = to_ms_since_boot(get_absolute_time()) + 50;

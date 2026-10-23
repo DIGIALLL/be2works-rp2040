@@ -24,13 +24,12 @@ enum {
     RPT_MANUFACTURER_STRING = 0x22,
     RPT_PRODUCT_STRING      = 0x23,
     RPT_SERIAL_STRING       = 0x24,
-
-    // Не из CP2112: журнал обмена с хостом для отладки
-    RPT_DEBUG_LOG           = 0x30,
 };
 
-// Значение Reset-репорта, по которому плата уходит в загрузчик UF2 (у CP2112 только 0x01)
-#define RESET_TO_BOOTLOADER  0xB0
+// Значения Reset-репорта сверх CP2112 (у него только 0x01). Дескриптор не расширяем:
+// Be2Works с лишним репортом в дескрипторе пишет "No adapter found"
+#define RESET_TO_BOOTLOADER  0xB0   // перезагрузка в загрузчик UF2
+#define RESET_LOG_MODE       0xD0   // переключить режим журнала: репорт 0x24 отдаёт журнал вместо серийника
 
 // Размеры полезной нагрузки (без байта Report ID) — должны совпадать с HID-дескриптором
 #define LEN_RESET            1
@@ -50,7 +49,6 @@ enum {
 #define LEN_LOCK_BYTE        1
 #define LEN_USB_CONFIG       9
 #define LEN_STRING           63
-#define LEN_DEBUG_LOG        63
 
 void cp2112_init(void);
 void cp2112_task(void);
