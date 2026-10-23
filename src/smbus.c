@@ -135,6 +135,13 @@ static void line_low(uint pin) { gpio_set_dir(pin, GPIO_OUT); }
 static void line_release(uint pin) { gpio_set_dir(pin, GPIO_IN); }
 static void half_delay(void) { busy_wait_us_32(half_period_us); }
 
+// SMBus требует держать SDA не меньше 300 нс после спада SCL. Без паузы SDA меняется через
+// ~20 нс, и контроллер батареи (у него фильтр на входах) видит это как START/STOP
+static void scl_low(void) {
+    line_low(SMBUS_SCL_PIN);
+    busy_wait_us_32(1);
+}
+
 // Отпускаем SCL и ждём, пока ведомый закончит clock stretching
 static bool scl_high(void) {
     line_release(SMBUS_SCL_PIN);
@@ -153,7 +160,7 @@ static bool bus_start(void) {
     if (!gpio_get(SMBUS_SDA_PIN)) return false;  // SDA держит кто-то другой
     line_low(SMBUS_SDA_PIN);
     half_delay();
-    line_low(SMBUS_SCL_PIN);
+    scl_low();
     return true;
 }
 
@@ -175,14 +182,14 @@ static int write_byte(uint8_t b) {
         half_delay();
         if (!scl_high()) return -1;
         half_delay();
-        line_low(SMBUS_SCL_PIN);
+        scl_low();
     }
     line_release(SMBUS_SDA_PIN);
     half_delay();
     if (!scl_high()) return -1;
     int ack = !gpio_get(SMBUS_SDA_PIN);
     half_delay();
-    line_low(SMBUS_SCL_PIN);
+    scl_low();
     return ack;
 }
 
@@ -195,13 +202,13 @@ static bool read_byte(uint8_t *out, bool ack) {
         if (!scl_high()) return false;
         v = (uint8_t)((v << 1) | gpio_get(SMBUS_SDA_PIN));
         half_delay();
-        line_low(SMBUS_SCL_PIN);
+        scl_low();
     }
     if (ack) line_low(SMBUS_SDA_PIN);
     half_delay();
     if (!scl_high()) return false;
     half_delay();
-    line_low(SMBUS_SCL_PIN);
+    scl_low();
     line_release(SMBUS_SDA_PIN);
     *out = v;
     return true;
