@@ -24,7 +24,13 @@ enum {
     RPT_MANUFACTURER_STRING = 0x22,
     RPT_PRODUCT_STRING      = 0x23,
     RPT_SERIAL_STRING       = 0x24,
+
+    // Не из CP2112: журнал обмена с хостом для отладки
+    RPT_DEBUG_LOG           = 0x30,
 };
+
+// Значение Reset-репорта, по которому плата уходит в загрузчик UF2 (у CP2112 только 0x01)
+#define RESET_TO_BOOTLOADER  0xB0
 
 // Размеры полезной нагрузки (без байта Report ID) — должны совпадать с HID-дескриптором
 #define LEN_RESET            1
@@ -44,6 +50,7 @@ enum {
 #define LEN_LOCK_BYTE        1
 #define LEN_USB_CONFIG       9
 #define LEN_STRING           63
+#define LEN_DEBUG_LOG        63
 
 void cp2112_init(void);
 void cp2112_task(void);
@@ -51,6 +58,9 @@ void cp2112_task(void);
 uint16_t cp2112_get_feature(uint8_t id, uint8_t *buf, uint16_t maxlen);
 void cp2112_set_feature(uint8_t id, const uint8_t *buf, uint16_t len);
 void cp2112_on_output(uint8_t id, const uint8_t *buf, uint16_t len);
+
+// Запись в журнал: kind — 'S' set feature, 'G' get feature, 'O' output, 'I' get input report
+void cp2112_log(char kind, uint8_t id, const uint8_t *data, uint16_t len);
 
 // ASCII-строки для USB-дескрипторов (1 — производитель, 2 — продукт, 3 — серийный номер)
 const char *cp2112_usb_string(uint8_t index);

@@ -10,6 +10,7 @@
 
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
+#include "pico/bootrom.h"
 #include "hardware/watchdog.h"
 #include "tusb.h"
 
@@ -88,7 +89,15 @@ static char ascii_product[31];
 static char ascii_serial[31];
 
 static bool     reset_requested;
+static bool     bootloader_requested;
 static uint32_t reset_at_ms;
+
+// Журнал обмена: FIFO записей по 8 байт [kind, id, len, data[5]], забирается репортом 0x30
+#define LOG_SIZE        256
+#define LOG_PER_REPORT  7
+static uint8_t  log_fifo[LOG_SIZE][8];
+static uint16_t log_head, log_count;
+static uint8_t  log_dropped;
 
 // Запросы статуса и выдачи данных обрабатываются после выполнения транзакции:
 // TinyUSB может отдать их в одном tud_task() вместе с самим запросом на чтение
@@ -204,6 +213,35 @@ static void set_defaults(void) {
     make_string_report(str_manufacturer, ascii_manufacturer);
     make_string_report(str_product, ascii_product);
     make_string_report(str_serial, ascii_serial);
+}
+
+void cp2112_log(char kind, uint8_t id, const uint8_t *data, uint16_t len) {
+    if (id == RPT_DEBUG_LOG) return;
+    if (log_count == LOG_SIZE) {
+        if (log_dropped < 0xFF) log_dropped++;
+        return;
+    }
+    uint8_t *e = log_fifo[(log_head + log_count) % LOG_SIZE];
+    memset(e, 0, 8);
+    e[0] = (uint8_t)kind;
+    e[1] = id;
+    e[2] = len > 0xFF ? 0xFF : (uint8_t)len;
+    if (data) memcpy(e + 3, data, len > 5 ? 5 : len);
+    log_count++;
+}
+
+// [число записей, потеряно записей, записи по 8 байт]
+static uint16_t pop_log(uint8_t *dst) {
+    uint8_t n = log_count > LOG_PER_REPORT ? LOG_PER_REPORT : (uint8_t)log_count;
+    dst[0] = n;
+    dst[1] = log_dropped;
+    log_dropped = 0;
+    for (uint8_t i = 0; i < n; i++) {
+        memcpy(dst + 2 + 8 * i, log_fifo[log_head], 8);
+        log_head = (log_head + 1) % LOG_SIZE;
+        log_count--;
+    }
+    return LEN_DEBUG_LOG;
 }
 
 // ---------------------------------------------------------------------------
@@ -327,20 +365,28 @@ uint16_t cp2112_get_feature(uint8_t id, uint8_t *buf, uint16_t maxlen) {
         memcpy(tmp, str_serial, LEN_STRING);
         len = LEN_STRING;
         break;
+    case RPT_DEBUG_LOG:
+        memset(tmp, 0, LEN_DEBUG_LOG);
+        len = pop_log(tmp);
+        break;
     default:
+        cp2112_log('G', id, NULL, 0);
         return 0;
     }
 
     if (len > maxlen) len = maxlen;
     memcpy(buf, tmp, len);
+    cp2112_log('G', id, buf, len);
     return len;
 }
 
 void cp2112_set_feature(uint8_t id, const uint8_t *buf, uint16_t len) {
+    cp2112_log('S', id, buf, len);
     switch (id) {
     case RPT_RESET:
-        if (len >= 1 && buf[0] == 0x01) {
+        if (len >= 1 && (buf[0] == 0x01 || buf[0] == RESET_TO_BOOTLOADER)) {
             reset_requested = true;
+            bootloader_requested = buf[0] == RESET_TO_BOOTLOADER;
             reset_at_ms = to_ms_since_boot(get_absolute_time()) + 50;
         }
         break;
@@ -409,6 +455,7 @@ static void start_transfer(cmd_type_t type) {
 }
 
 void cp2112_on_output(uint8_t id, const uint8_t *buf, uint16_t len) {
+    cp2112_log('O', id, buf, len);
     switch (id) {
     case RPT_READ_REQUEST: {
         if (len < LEN_READ_REQUEST) break;
@@ -502,6 +549,7 @@ void cp2112_task(void) {
     if (reset_requested && to_ms_since_boot(get_absolute_time()) >= reset_at_ms) {
         tud_disconnect();
         sleep_ms(20);
+        if (bootloader_requested) reset_usb_boot(0, 0);
         watchdog_reboot(0, 0, 0);
         for (;;) tight_loop_contents();
     }

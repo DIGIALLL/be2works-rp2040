@@ -22,7 +22,10 @@ int main(void) {
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type,
                                uint8_t *buffer, uint16_t reqlen) {
     (void)instance;
-    if (report_type != HID_REPORT_TYPE_FEATURE) return 0;
+    if (report_type != HID_REPORT_TYPE_FEATURE) {
+        cp2112_log('I', report_id, NULL, reqlen);
+        return 0;
+    }
     return cp2112_get_feature(report_id, buffer, reqlen);
 }
 

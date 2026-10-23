@@ -21,6 +21,7 @@ target_include_directories(cp2112_emu PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 target_link_libraries(cp2112_emu PRIVATE
     pico_stdlib
     pico_unique_id
+    pico_bootrom
     hardware_i2c
     hardware_watchdog
     tinyusb_device
