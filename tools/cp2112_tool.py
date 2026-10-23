@@ -4,6 +4,7 @@
   python cp2112_tool.py scan        поиск устройств на шине SMBus
   python cp2112_tool.py battery     чтение основных регистров батареи (адрес 0x0B)
   python cp2112_tool.py log [сек]   журнал запросов программы к адаптеру (только эта прошивка)
+  python cp2112_tool.py autodetect  перебор ролей SDA/SCL/GND на GP2–GP4, пока не ответит батарея
   python cp2112_tool.py bootloader  перезагрузить плату в загрузчик UF2 (только эта прошивка)
 """
 import ctypes
@@ -215,6 +216,53 @@ def cmd_battery(a):
     print("Регистры банок 0x3C–0x3F зависят от контроллера; сумма банок должна совпасть с напряжением")
 
 
+# Варианты прошивки (Reset 0xE0 + n): пины-кандидаты GP2, GP3, GP4; пары (SDA, SCL) по индексам
+# кандидатов, третий пин отпущен (0–5) или прижат к GND (6–11). Должно совпадать с src/smbus.c
+PIN_CANDIDATES = (2, 3, 4)
+VARIANT_PAIRS = ((1, 0), (0, 1), (2, 0), (0, 2), (2, 1), (1, 2))
+
+
+def describe_variant(n):
+    sda, scl = VARIANT_PAIRS[n % 6]
+    other = 3 - sda - scl
+    third = "к GND" if n >= 6 else "отпущен"
+    return (f"SDA=GP{PIN_CANDIDATES[sda]}, SCL=GP{PIN_CANDIDATES[scl]}, "
+            f"GP{PIN_CANDIDATES[other]} {third}")
+
+
+def cmd_autodetect(a):
+    # На медленной шине сработают и внутренние подтяжки (~50 кОм) на пине без внешнего резистора
+    c = a.get_feature(0x06, 13)
+    if c:
+        a.set_feature(0x06, *((20000).to_bytes(4, "big") + c[4:]))
+    print("Перебор ролей пинов GP2–GP4 по кругу, Ctrl+C — стоп. На плюс батареи пины не подключать!")
+    rnd = 0
+    while True:
+        rnd += 1
+        for n in range(len(VARIANT_PAIRS) * 2):
+            a.set_feature(0x01, 0xE0 + n)
+            time.sleep(0.02)
+            if not a.probe(BATTERY):
+                continue
+            # Прижатая шина «отвечает» на любой адрес: пустой адрес должен молчать,
+            # а напряжение батареи — быть правдоподобным и одинаковым два раза подряд
+            v1 = a.read_word(BATTERY, 0x09)
+            v2 = a.read_word(BATTERY, 0x09)
+            if a.probe(0x75):
+                print(f"[{time.strftime('%H:%M:%S')}] вариант {n:2}: {describe_variant(n)} — шина прижата")
+                continue
+            if v1 is None or v2 is None or not 2000 <= v1 <= 25000 or abs(v1 - v2) > 200:
+                print(f"[{time.strftime('%H:%M:%S')}] вариант {n:2}: {describe_variant(n)} — "
+                      f"ACK на 0x0B, но напряжение {v1}/{v2} — похоже на помеху")
+                continue
+            print(f"\nНАЙДЕНО, вариант {n}: {describe_variant(n)}\n")
+            cmd_battery(a)
+            print(f"\nПлата остаётся в варианте {n} до переподключения USB")
+            return
+        if rnd % 10 == 0:
+            print(f"[{time.strftime('%H:%M:%S')}] круг {rnd}: батарея не ответила ни в одном из 12 вариантов")
+
+
 def cmd_log(a, secs):
     # Reset 0xD0 переключает режим журнала: репорт серийного номера 0x24 отдаёт записи журнала.
     # Если 0x24 ещё возвращает строку ([длина, 0x03, ...]) — включаем режим
@@ -257,6 +305,8 @@ def main():
         cmd_battery(a)
     elif cmd == "log":
         cmd_log(a, float(sys.argv[2]) if len(sys.argv) > 2 else 30)
+    elif cmd == "autodetect":
+        cmd_autodetect(a)
     elif cmd == "bootloader":
         print("Перезагрузка в загрузчик:", "OK" if a.set_feature(0x01, 0xB0) else "ошибка")
     else:

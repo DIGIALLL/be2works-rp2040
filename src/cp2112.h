@@ -30,6 +30,7 @@ enum {
 // Be2Works с лишним репортом в дескрипторе пишет "No adapter found"
 #define RESET_TO_BOOTLOADER  0xB0   // перезагрузка в загрузчик UF2
 #define RESET_LOG_MODE       0xD0   // переключить режим журнала: репорт 0x24 отдаёт журнал вместо серийника
+#define RESET_PIN_VARIANT    0xE0   // 0xE0 + n: роли пинов SDA/SCL/GND, вариант n (smbus_set_variant)
 
 // Размеры полезной нагрузки (без байта Report ID) — должны совпадать с HID-дескриптором
 #define LEN_RESET            1

@@ -400,6 +400,8 @@ void cp2112_set_feature(uint8_t id, const uint8_t *buf, uint16_t len) {
     case RPT_RESET:
         if (len >= 1 && buf[0] == RESET_LOG_MODE) {
             log_mode = !log_mode;
+        } else if (len >= 1 && buf[0] >= RESET_PIN_VARIANT && buf[0] < RESET_PIN_VARIANT + SMBUS_VARIANTS) {
+            smbus_set_variant((uint8_t)(buf[0] - RESET_PIN_VARIANT));
         } else if (len >= 1 && (buf[0] == 0x01 || buf[0] == RESET_TO_BOOTLOADER)) {
             reset_requested = true;
             bootloader_requested = buf[0] == RESET_TO_BOOTLOADER;

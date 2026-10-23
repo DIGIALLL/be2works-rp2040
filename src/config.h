@@ -9,6 +9,10 @@
 #define SMBUS_SCL_PIN       2
 #endif
 
+// Пины, между которыми перебираются роли SDA/SCL/GND при поиске контактов батареи
+// (Reset 0xE0 + n, утилита: cp2112_tool.py autodetect)
+#define SMBUS_PIN_CANDIDATES { 2, 3, 4 }
+
 // Аппаратный I2C есть только у пар, где SDA на чётном пине, SCL на нечётном и оба
 // пина одного блока: GPn принадлежит I2C((n / 2) % 2). Иначе шина работает программно
 #if (SMBUS_SDA_PIN % 2 == 0) && (SMBUS_SCL_PIN % 2 == 1) && \

@@ -7,20 +7,24 @@
 
 static uint32_t current_hz = SMBUS_DEFAULT_HZ;
 
+// Пины шины можно сменить на ходу (smbus_set_variant), если она программная
+static uint sda_pin = SMBUS_SDA_PIN;
+static uint scl_pin = SMBUS_SCL_PIN;
+
 static void pins_to_i2c(void) {
 #if SMBUS_HW_I2C
-    gpio_set_function(SMBUS_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(SMBUS_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(sda_pin, GPIO_FUNC_I2C);
+    gpio_set_function(scl_pin, GPIO_FUNC_I2C);
 #else
     // Программная шина: open-drain эмулируем направлением, выход всегда 0
-    gpio_init(SMBUS_SDA_PIN);
-    gpio_init(SMBUS_SCL_PIN);
-    gpio_put(SMBUS_SDA_PIN, 0);
-    gpio_put(SMBUS_SCL_PIN, 0);
+    gpio_init(sda_pin);
+    gpio_init(scl_pin);
+    gpio_put(sda_pin, 0);
+    gpio_put(scl_pin, 0);
 #endif
 #if SMBUS_INTERNAL_PULLUPS
-    gpio_pull_up(SMBUS_SDA_PIN);
-    gpio_pull_up(SMBUS_SCL_PIN);
+    gpio_pull_up(sda_pin);
+    gpio_pull_up(scl_pin);
 #endif
 }
 
@@ -30,26 +34,26 @@ static void bus_recover(void) {
     i2c_deinit(SMBUS_I2C);
 #endif
 
-    gpio_init(SMBUS_SDA_PIN);
-    gpio_init(SMBUS_SCL_PIN);
-    gpio_set_dir(SMBUS_SDA_PIN, GPIO_IN);
-    gpio_put(SMBUS_SCL_PIN, 0);
-    gpio_put(SMBUS_SDA_PIN, 0);
+    gpio_init(sda_pin);
+    gpio_init(scl_pin);
+    gpio_set_dir(sda_pin, GPIO_IN);
+    gpio_put(scl_pin, 0);
+    gpio_put(sda_pin, 0);
 
     // Open-drain эмулируем переключением направления: выход = 0, вход = отпущено
-    for (int i = 0; i < 9 && !gpio_get(SMBUS_SDA_PIN); i++) {
-        gpio_set_dir(SMBUS_SCL_PIN, GPIO_OUT);
+    for (int i = 0; i < 9 && !gpio_get(sda_pin); i++) {
+        gpio_set_dir(scl_pin, GPIO_OUT);
         sleep_us(5);
-        gpio_set_dir(SMBUS_SCL_PIN, GPIO_IN);
+        gpio_set_dir(scl_pin, GPIO_IN);
         sleep_us(5);
     }
 
     // STOP: SDA 0 -> 1 при SCL = 1
-    gpio_set_dir(SMBUS_SDA_PIN, GPIO_OUT);
+    gpio_set_dir(sda_pin, GPIO_OUT);
     sleep_us(5);
-    gpio_set_dir(SMBUS_SCL_PIN, GPIO_IN);
+    gpio_set_dir(scl_pin, GPIO_IN);
     sleep_us(5);
-    gpio_set_dir(SMBUS_SDA_PIN, GPIO_IN);
+    gpio_set_dir(sda_pin, GPIO_IN);
     sleep_us(5);
 
 #if SMBUS_HW_I2C
@@ -126,6 +130,12 @@ smbus_result_t smbus_write_read(uint8_t addr, const uint8_t *target, size_t targ
     return map_read(rc, len);
 }
 
+// Аппаратный I2C привязан к своим пинам — перебор ролей только для программной шины
+bool smbus_set_variant(uint8_t n) {
+    (void)n;
+    return false;
+}
+
 #else  // программный I2C
 
 static uint32_t half_period_us = 5;
@@ -138,14 +148,14 @@ static void half_delay(void) { busy_wait_us_32(half_period_us); }
 // SMBus требует держать SDA не меньше 300 нс после спада SCL. Без паузы SDA меняется через
 // ~20 нс, и контроллер батареи (у него фильтр на входах) видит это как START/STOP
 static void scl_low(void) {
-    line_low(SMBUS_SCL_PIN);
+    line_low(scl_pin);
     busy_wait_us_32(1);
 }
 
 // Отпускаем SCL и ждём, пока ведомый закончит clock stretching
 static bool scl_high(void) {
-    line_release(SMBUS_SCL_PIN);
-    while (!gpio_get(SMBUS_SCL_PIN)) {
+    line_release(scl_pin);
+    while (!gpio_get(scl_pin)) {
         if (time_reached(deadline)) return false;
     }
     return true;
@@ -153,12 +163,12 @@ static bool scl_high(void) {
 
 // START и повторный START: SDA 1 -> 0 при SCL = 1
 static bool bus_start(void) {
-    line_release(SMBUS_SDA_PIN);
+    line_release(sda_pin);
     half_delay();
     if (!scl_high()) return false;
     half_delay();
-    if (!gpio_get(SMBUS_SDA_PIN)) return false;  // SDA держит кто-то другой
-    line_low(SMBUS_SDA_PIN);
+    if (!gpio_get(sda_pin)) return false;  // SDA держит кто-то другой
+    line_low(sda_pin);
     half_delay();
     scl_low();
     return true;
@@ -166,28 +176,28 @@ static bool bus_start(void) {
 
 // STOP: SDA 0 -> 1 при SCL = 1
 static void bus_stop(void) {
-    line_low(SMBUS_SDA_PIN);
+    line_low(sda_pin);
     half_delay();
     scl_high();
     half_delay();
-    line_release(SMBUS_SDA_PIN);
+    line_release(sda_pin);
     half_delay();
 }
 
 // 1 = ACK, 0 = NACK, -1 = таймаут clock stretching
 static int write_byte(uint8_t b) {
     for (int i = 7; i >= 0; i--) {
-        if (b & (1u << i)) line_release(SMBUS_SDA_PIN);
-        else line_low(SMBUS_SDA_PIN);
+        if (b & (1u << i)) line_release(sda_pin);
+        else line_low(sda_pin);
         half_delay();
         if (!scl_high()) return -1;
         half_delay();
         scl_low();
     }
-    line_release(SMBUS_SDA_PIN);
+    line_release(sda_pin);
     half_delay();
     if (!scl_high()) return -1;
-    int ack = !gpio_get(SMBUS_SDA_PIN);
+    int ack = !gpio_get(sda_pin);
     half_delay();
     scl_low();
     return ack;
@@ -196,20 +206,20 @@ static int write_byte(uint8_t b) {
 // ack = true — подтверждаем байт (будут ещё), false — NACK на последнем
 static bool read_byte(uint8_t *out, bool ack) {
     uint8_t v = 0;
-    line_release(SMBUS_SDA_PIN);
+    line_release(sda_pin);
     for (int i = 0; i < 8; i++) {
         half_delay();
         if (!scl_high()) return false;
-        v = (uint8_t)((v << 1) | gpio_get(SMBUS_SDA_PIN));
+        v = (uint8_t)((v << 1) | gpio_get(sda_pin));
         half_delay();
         scl_low();
     }
-    if (ack) line_low(SMBUS_SDA_PIN);
+    if (ack) line_low(sda_pin);
     half_delay();
     if (!scl_high()) return false;
     half_delay();
     scl_low();
-    line_release(SMBUS_SDA_PIN);
+    line_release(sda_pin);
     *out = v;
     return true;
 }
@@ -275,6 +285,31 @@ smbus_result_t smbus_read(uint8_t addr, uint8_t *data, size_t len, uint32_t time
 smbus_result_t smbus_write_read(uint8_t addr, const uint8_t *target, size_t target_len,
                                 uint8_t *data, size_t len, uint32_t timeout_ms) {
     return transfer(addr, target, target_len, data, len, timeout_ms);
+}
+
+// Варианты для поиска контактов батареи: пары (SDA, SCL) из пинов-кандидатов, третий пин
+// отпущен (0–5) или прижат к GND (6–11) — на случай, если он попал на контакт присутствия
+static const uint8_t candidates[3] = SMBUS_PIN_CANDIDATES;
+static const uint8_t variant_pairs[6][2] = { {1, 0}, {0, 1}, {2, 0}, {0, 2}, {2, 1}, {1, 2} };
+
+bool smbus_set_variant(uint8_t n) {
+    if (n >= SMBUS_VARIANTS) return false;
+    const uint8_t *pair = variant_pairs[n % 6];
+    uint8_t other = (uint8_t)(3 - pair[0] - pair[1]);
+
+    for (int i = 0; i < 3; i++) {
+        gpio_init(candidates[i]);
+        gpio_disable_pulls(candidates[i]);
+    }
+    if (n >= 6) {
+        gpio_put(candidates[other], 0);
+        gpio_set_dir(candidates[other], GPIO_OUT);
+    }
+    sda_pin = candidates[pair[0]];
+    scl_pin = candidates[pair[1]];
+    pins_to_i2c();
+    bus_recover();
+    return true;
 }
 
 #endif
