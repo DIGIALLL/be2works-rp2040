@@ -1,10 +1,23 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// Пины SMBus на RP2040-Zero (I2C0)
-#define SMBUS_I2C           i2c0
-#define SMBUS_SDA_PIN       4
-#define SMBUS_SCL_PIN       5
+// Пины SMBus на RP2040-Zero. Можно задать любые; при сборке можно переопределить через -D
+#ifndef SMBUS_SDA_PIN
+#define SMBUS_SDA_PIN       3
+#endif
+#ifndef SMBUS_SCL_PIN
+#define SMBUS_SCL_PIN       2
+#endif
+
+// Аппаратный I2C есть только у пар, где SDA на чётном пине, SCL на нечётном и оба
+// пина одного блока: GPn принадлежит I2C((n / 2) % 2). Иначе шина работает программно
+#if (SMBUS_SDA_PIN % 2 == 0) && (SMBUS_SCL_PIN % 2 == 1) && \
+    ((SMBUS_SDA_PIN / 2) % 2 == (SMBUS_SCL_PIN / 2) % 2)
+#define SMBUS_HW_I2C        1
+#define SMBUS_I2C           (((SMBUS_SDA_PIN / 2) % 2) ? i2c1 : i2c0)
+#else
+#define SMBUS_HW_I2C        0
+#endif
 
 // Встроенные подтяжки RP2040 (~50 кОм) слабые; для батареи нужны внешние 4.7 кОм к 3.3 В
 #define SMBUS_INTERNAL_PULLUPS 1
