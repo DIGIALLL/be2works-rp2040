@@ -52,5 +52,5 @@ int main(void){
   // Reset 0xE0 + n меняет роли пинов и не перезагружает плату
   uint8_t rv=0xE0+7; cp2112_set_feature(0x01,&rv,1); assert(variant==7);
   rv=0xE0+SMBUS_VARIANTS; cp2112_set_feature(0x01,&rv,1); assert(variant==7);
-  for(int i=0;i<10;i++) cp2112_task(); printf("pin variant ok\n");
+  pump(); printf("pin variant ok\n");
   printf("ALL OK\n"); return 0; }
