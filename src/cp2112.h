@@ -56,6 +56,8 @@ void cp2112_task(void);
 uint16_t cp2112_get_feature(uint8_t id, uint8_t *buf, uint16_t maxlen);
 void cp2112_set_feature(uint8_t id, const uint8_t *buf, uint16_t len);
 void cp2112_on_output(uint8_t id, const uint8_t *buf, uint16_t len);
+// Входной репорт по запросу GET_REPORT (control), а не по interrupt IN
+uint16_t cp2112_get_input(uint8_t id, uint8_t *buf, uint16_t maxlen);
 
 // Запись в журнал: kind — 'S' set feature, 'G' get feature, 'O' output, 'I' get input report
 void cp2112_log(char kind, uint8_t id, const uint8_t *data, uint16_t len);

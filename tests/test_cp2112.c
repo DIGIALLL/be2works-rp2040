@@ -41,4 +41,11 @@ int main(void){
   nrep=0; uint8_t got16=0, got13=0;
   for(int i=0;i<5;i++){ cp2112_task(); if(last[0]==0x16 && !got16){got16=last[1];} if(last[0]==0x13){got13=last[2];} }
   printf("race: status=%u data_len=%u reports=%d\n",got16,got13,nrep); assert(got16==0x02 && got13==2 && nrep==2);
+  // Be2Works: запрос, force read и GET_REPORT 0x13 до того, как отработал cp2112_task()
+  uint8_t wr3[20]={0x16,0x00,0x02,0x01,0x09}, f3[2]={0,2}, in[64];
+  cp2112_on_output(0x11,wr3,20); cp2112_on_output(0x12,f3,2);
+  assert(cp2112_get_input(0x13,in,63)==63 && in[0]==0x02 && in[1]==2 && in[2]==0 && in[3]==1 && seen_target[0]==0x09);
+  assert(cp2112_get_input(0x13,in,63)==63 && in[0]==0x02 && in[1]==0);   // данных больше нет
+  assert(cp2112_get_input(0x16,in,63)==6 && in[0]==0x02 && in[1]==0x05 && in[5]==2);
+  pump(); printf("get_report ok\n");
   printf("ALL OK\n"); return 0; }

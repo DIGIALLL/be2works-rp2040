@@ -144,8 +144,15 @@ static void queue_in(uint8_t id, const uint8_t *data, uint8_t len, uint8_t repor
     in_count++;
 }
 
+// Копии ответов на чтение для хоста, который забирает их запросом GET_REPORT 0x13
+// (Be2Works: 0x11 -> 0x12 -> GET_REPORT). По interrupt IN они уходят как обычно
+#define PULL_QUEUE_LEN 12
+static uint8_t pull_queue[PULL_QUEUE_LEN][LEN_READ_RESPONSE];
+static uint8_t pull_head, pull_count;
+
 static void flush_in_queue(void) {
     in_head = in_tail = in_count = 0;
+    pull_head = pull_count = 0;
 }
 
 static void send_read_response(uint8_t status, const uint8_t *data, uint8_t len) {
@@ -154,6 +161,10 @@ static void send_read_response(uint8_t status, const uint8_t *data, uint8_t len)
     r[1] = len;
     memcpy(r + 2, data, len);
     queue_in(RPT_READ_RESPONSE, r, sizeof(r), LEN_READ_RESPONSE);
+    if (pull_count < PULL_QUEUE_LEN) {
+        memcpy(pull_queue[(pull_head + pull_count) % PULL_QUEUE_LEN], r, sizeof(r));
+        pull_count++;
+    }
 }
 
 // Отдаёт хосту до limit байт из rx_buf кусками по 61 байту
@@ -457,6 +468,7 @@ static void start_transfer(cmd_type_t type) {
     xfer.retries = 0;
     xfer.bytes_read = 0;
     rx_len = rx_sent = 0;
+    pull_head = pull_count = 0;   // ответы прошлой транзакции больше не нужны
 }
 
 void cp2112_on_output(uint8_t id, const uint8_t *buf, uint16_t len) {
@@ -531,7 +543,8 @@ static void send_status(void) {
     queue_in(RPT_XFER_STATUS_RESPONSE, r, sizeof(r), LEN_XFER_STATUS_RESP);
 }
 
-void cp2112_task(void) {
+// Выполняет принятую транзакцию и отвечает на запросы статуса и данных
+static void process_requests(void) {
     run_pending();
 
     if (status_requested) {
@@ -542,6 +555,44 @@ void cp2112_task(void) {
         force_read_requested = false;
         push_rx_data(force_read_len);
     }
+}
+
+uint16_t cp2112_get_input(uint8_t id, uint8_t *buf, uint16_t maxlen) {
+    // GET_REPORT может прийти в том же tud_task(), что и сам запрос: сначала выполняем его
+    process_requests();
+
+    uint8_t tmp[LEN_READ_RESPONSE] = {0};
+    uint16_t len = 0;
+    switch (id) {
+    case RPT_READ_RESPONSE:
+        if (pull_count) {
+            memcpy(tmp, pull_queue[pull_head], LEN_READ_RESPONSE);
+            pull_head = (pull_head + 1) % PULL_QUEUE_LEN;
+            pull_count--;
+        } else {
+            tmp[0] = xfer.status0;   // данных нет: только статус
+        }
+        len = LEN_READ_RESPONSE;
+        break;
+    case RPT_XFER_STATUS_RESPONSE:
+        tmp[0] = xfer.status0;
+        tmp[1] = xfer.status1;
+        put_be16(tmp + 2, xfer.retries);
+        put_be16(tmp + 4, xfer.bytes_read);
+        len = LEN_XFER_STATUS_RESP;
+        break;
+    default:
+        break;
+    }
+
+    if (len > maxlen) len = maxlen;
+    memcpy(buf, tmp, len);
+    cp2112_log('I', id, buf, len);
+    return len;
+}
+
+void cp2112_task(void) {
+    process_requests();
 
     if (in_count && tud_hid_ready()) {
         uint8_t *slot = in_queue[in_head];
