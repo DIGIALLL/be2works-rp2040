@@ -89,6 +89,13 @@ python tools/cp2112_tool.py bootloader  перезагрузка платы в �
 Утилита работает параллельно с Be2Works, но запускай Be2Works первым: если адаптер в момент его старта
 занят, Be2Works может написать «No adapter found».
 
+## Монитор батареи (GUI)
+
+`python tools/battery_gui.py` — окно на tkinter без сторонних пакетов, только чтение: живые значения SBS (напряжение, ток,
+температура, ёмкости, циклы, статус по битам), банки с разбросом, график напряжения и тока, запись в CSV и дамп всех
+регистров 0x00–0xFF в JSON (папка `backup/`, в git не попадает). Кнопка «Сравнить дампы» показывает, какие регистры
+изменились между двумя дампами. Заметки по проверенной батарее и её контроллеру: [docs/battery-notes.md](docs/battery-notes.md).
+
 ## Что реализовано
 
 Протокол по [AN495: CP2112 Interface Specification](https://www.silabs.com/documents/public/application-notes/an495-cp2112-interface-specification.pdf):
