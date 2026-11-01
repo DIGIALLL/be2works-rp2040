@@ -6,3 +6,6 @@ build/
 *.map
 *.dis
 tests/test_cp2112
+__pycache__/
+dist/
+backup/

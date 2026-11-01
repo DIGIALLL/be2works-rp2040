@@ -5,6 +5,8 @@
 #include "cp2112.h"
 #include "config.h"
 #include "smbus.h"
+#include "autoscan.h"
+#include "led.h"
 
 #include <string.h>
 
@@ -288,6 +290,8 @@ static void run_pending(void) {
     uint16_t max_retries = cfg.retry_time;
     if (max_retries > SMBUS_MAX_RETRIES) max_retries = SMBUS_MAX_RETRIES;
 
+    autoscan_host_transfer_begin();
+
     smbus_result_t res = SMBUS_OK;
     uint16_t attempt = 0;
     for (;;) {
@@ -315,6 +319,8 @@ static void run_pending(void) {
     xfer.bytes_read = rx_len;
 
     finish_transfer(res, attempt);
+    autoscan_host_transfer_end(pending.addr, res == SMBUS_OK);
+    led_flash(res == SMBUS_OK);
 
     if (is_read && cfg.auto_send_read) {
         if (res == SMBUS_OK) push_rx_data(rx_len);
@@ -400,6 +406,11 @@ void cp2112_set_feature(uint8_t id, const uint8_t *buf, uint16_t len) {
     case RPT_RESET:
         if (len >= 1 && buf[0] == RESET_LOG_MODE) {
             log_mode = !log_mode;
+        } else if (len >= 1 && buf[0] >= RESET_PIN_VARIANT && buf[0] < RESET_PIN_VARIANT + SMBUS_VARIANTS) {
+            autoscan_manual_override();
+            smbus_set_variant((uint8_t)(buf[0] - RESET_PIN_VARIANT));
+        } else if (len >= 1 && buf[0] == RESET_AUTOSCAN) {
+            autoscan_restart();
         } else if (len >= 1 && (buf[0] == 0x01 || buf[0] == RESET_TO_BOOTLOADER)) {
             reset_requested = true;
             bootloader_requested = buf[0] == RESET_TO_BOOTLOADER;
@@ -593,6 +604,7 @@ uint16_t cp2112_get_input(uint8_t id, uint8_t *buf, uint16_t maxlen) {
 
 void cp2112_task(void) {
     process_requests();
+    autoscan_task(cfg.clock_hz);
 
     if (in_count && tud_hid_ready()) {
         uint8_t *slot = in_queue[in_head];
