@@ -14,6 +14,13 @@ smbus_result_t smbus_write(uint8_t a,const uint8_t*d,size_t l,uint32_t t){seen_a
 smbus_result_t smbus_read(uint8_t a,uint8_t*d,size_t l,uint32_t t){(void)t;if(a!=0x0B)return SMBUS_ADDR_NACK;for(size_t i=0;i<l;i++)d[i]=i;return SMBUS_OK;}
 smbus_result_t smbus_write_read(uint8_t a,const uint8_t*tg,size_t tl,uint8_t*d,size_t l,uint32_t t){seen_addr=a;memcpy(seen_target,tg,tl);seen_tl=tl;return smbus_read(a,d,l,t);}
 static int variant=-1; bool smbus_set_variant(uint8_t n){if(n>=SMBUS_VARIANTS)return false;variant=n;return true;}
+#include "autoscan.h"
+#include "led.h"
+static int overrides, restarts, begins, ends;
+void autoscan_task(uint32_t hz){(void)hz;} void autoscan_host_transfer_begin(void){begins++;}
+void autoscan_host_transfer_end(uint8_t a,bool ok){(void)a;(void)ok;ends++;}
+void autoscan_manual_override(void){overrides++;} void autoscan_restart(void){restarts++;}
+void led_flash(bool ok){(void)ok;}
 static void pump(void){for(int i=0;i<20;i++)cp2112_task();}
 int main(void){
   cp2112_init(); uint8_t b[64];
@@ -52,5 +59,8 @@ int main(void){
   // Reset 0xE0 + n меняет роли пинов и не перезагружает плату
   uint8_t rv=0xE0+7; cp2112_set_feature(0x01,&rv,1); assert(variant==7);
   rv=0xE0+SMBUS_VARIANTS; cp2112_set_feature(0x01,&rv,1); assert(variant==7);
+  assert(overrides==1);
+  rv=0xC0; cp2112_set_feature(0x01,&rv,1); assert(restarts==1);
+  assert(begins>0 && begins==ends);
   pump(); printf("pin variant ok\n");
   printf("ALL OK\n"); return 0; }

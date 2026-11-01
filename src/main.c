@@ -5,14 +5,23 @@
 #include "pico/stdlib.h"
 #include "tusb.h"
 #include "cp2112.h"
+#include "led.h"
+#include "autoscan.h"
 
 int main(void) {
+    led_init();
     cp2112_init();
     tusb_init();
 
     for (;;) {
         tud_task();
         cp2112_task();
+
+        led_status_t status = LED_IDLE;
+        if (!tud_mounted()) status = LED_NO_USB;
+        else if (autoscan_battery_ok()) status = LED_BATTERY;
+        else if (autoscan_state() == AUTOSCAN_SEARCHING) status = LED_SEARCH;
+        led_task(status);
     }
 }
 

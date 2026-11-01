@@ -5,7 +5,8 @@
   python cp2112_tool.py battery     чтение основных регистров батареи (адрес 0x0B)
   python cp2112_tool.py log [сек]   журнал запросов программы к адаптеру (только эта прошивка)
   python cp2112_tool.py autodetect  перебор ролей SDA/SCL/GND на GP2–GP4, пока не ответит батарея
-  python cp2112_tool.py bootloader  перезагрузить плату в загрузчик UF2 (только эта прошивка)
+  python cp2112_tool.py rescan      заново запустить автопоиск пинов батареи (он работает в самой прошивке)
+  python cp2112_tool.py bootloaderперезагрузить плату в загрузчик UF2 (только эта прошивка)
 """
 import ctypes
 import ctypes.wintypes as wt
@@ -307,6 +308,8 @@ def main():
         cmd_log(a, float(sys.argv[2]) if len(sys.argv) > 2 else 30)
     elif cmd == "autodetect":
         cmd_autodetect(a)
+    elif cmd == "rescan":
+        print("Автопоиск перезапущен:", "OK" if a.set_feature(0x01, 0xC0) else "ошибка")
     elif cmd == "bootloader":
         print("Перезагрузка в загрузчик:", "OK" if a.set_feature(0x01, 0xB0) else "ошибка")
     else:

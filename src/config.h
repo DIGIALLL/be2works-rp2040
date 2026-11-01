@@ -13,6 +13,23 @@
 // (Reset 0xE0 + n, утилита: cp2112_tool.py autodetect)
 #define SMBUS_PIN_CANDIDATES { 2, 3, 4 }
 
+// Автопоиск контактов батареи в прошивке (autoscan.c). Работает, пока хост не занимает шину
+#define AUTOSCAN_HOST_IDLE_MS 3000      // сколько хост должен молчать, чтобы поиск начался
+#define AUTOSCAN_STEP_MS      80        // пауза между вариантами
+#define AUTOSCAN_CHECK_MS     2000      // как часто проверять найденную батарею
+#define AUTOSCAN_PROBE_HZ     20000     // частота шины при поиске
+// 0 — перебирать только 6 вариантов, где третий пин отпущен (безопасно для любой проводки).
+// 1 — ещё 6 вариантов, где третий пин прижимается к GND: может закоротить контакт батареи,
+// поэтому включать только если знаешь, что на пинах GP2–GP4 нет ничего, кроме SDA/SCL/минуса
+#ifndef AUTOSCAN_GND_VARIANTS
+#define AUTOSCAN_GND_VARIANTS 0
+#endif
+#define AUTOSCAN_VARIANTS     (AUTOSCAN_GND_VARIANTS ? 12 : 6)
+
+// Светодиод WS2812 на RP2040-Zero и его яркость (0-255; полная яркость слепит)
+#define LED_PIN             16
+#define LED_BRIGHTNESS      24
+
 // Аппаратный I2C есть только у пар, где SDA на чётном пине, SCL на нечётном и оба
 // пина одного блока: GPn принадлежит I2C((n / 2) % 2). Иначе шина работает программно
 #if (SMBUS_SDA_PIN % 2 == 0) && (SMBUS_SCL_PIN % 2 == 1) && \

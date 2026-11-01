@@ -14,7 +14,11 @@ add_executable(cp2112_emu
     src/cp2112.c
     src/smbus.c
     src/usb_descriptors.c
+    src/led.c
+    src/autoscan.c
 )
+
+pico_generate_pio_header(cp2112_emu ${CMAKE_CURRENT_LIST_DIR}/src/ws2812.pio)
 
 target_include_directories(cp2112_emu PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
 
@@ -23,6 +27,8 @@ target_link_libraries(cp2112_emu PRIVATE
     pico_unique_id
     pico_bootrom
     hardware_i2c
+    hardware_pio
+    hardware_clocks
     hardware_watchdog
     tinyusb_device
     tinyusb_board
